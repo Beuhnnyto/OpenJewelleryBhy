@@ -1,0 +1,15 @@
+[package]
+name = "ojb-cli"
+description = "OpenJewelleryBhy command line: templates, headless builds, exports, reports"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "ojb"
+path = "src/main.rs"
+
+[dependencies]
+ojb-core = { path = "../ojb-core" }
+clap.workspace = true
+serde_json.workspace = true

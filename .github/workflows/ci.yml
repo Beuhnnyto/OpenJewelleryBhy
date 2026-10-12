@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            exe: openjewellerybhy
+            cli: ojb
+          - os: windows-latest
+            exe: openjewellerybhy.exe
+            cli: ojb.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Linux system libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev
+      - name: Test
+        run: cargo test --workspace --release
+      - name: Build
+        run: cargo build --workspace --release
+      - name: Smoke test CLI
+        shell: bash
+        run: |
+          ./target/release/${{ matrix.cli }} new halo -o halo.ojb
+          ./target/release/${{ matrix.cli }} build halo.ojb -o halo.3mf --gems
+          ./target/release/${{ matrix.cli }} report halo.ojb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenJewelleryBhy-${{ runner.os }}
+          path: |
+            target/release/${{ matrix.exe }}
+            target/release/${{ matrix.cli }}
+
+  release:
+    # Push a tag like v0.2.0 to publish installers on GitHub Releases.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+      - uses: Swatinem/rust-cache@v2
+      - name: Tools
+        run: |
+          sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev libx11-dev
+          pip install ziglang==0.14.1
+          mkdir -p ~/.local/bin && printf '#!/bin/sh\nexec python3 -m ziglang "$@"\n' > ~/.local/bin/zig && chmod +x ~/.local/bin/zig
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          cargo install cargo-zigbuild --locked
+      - name: Package
+        run: ./scripts/package.sh
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
